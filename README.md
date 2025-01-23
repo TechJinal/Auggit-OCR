@@ -1,1 +1,0 @@
-# Auggit-OCR
