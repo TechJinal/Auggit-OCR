@@ -13,12 +13,14 @@ import google.generativeai as genai
 import json
 from fastapi.responses import JSONResponse
 from pdf2image import convert_from_path
-import openai
+
+from test import combine_page_data
+# import openai
 
 load_dotenv()
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-openai.api_key = OPENAI_API_KEY
+# OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+# openai.api_key = OPENAI_API_KEY
 
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 
@@ -80,21 +82,26 @@ def gemini_output(image_path, system_prompt, user_prompt):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating response from Gemini: {str(e)}")
 
-# OpenAI utility function
-def call_openai_model(system_message: str, prompt: str) -> str:
-    """Calls OpenAI's API to generate a response."""
+def call_gemini_model(system_prompt, user_prompt):
+    """Generate structured data using Gemini 1.5 Flash."""
     try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": system_message},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.3
-        )
-        return response.choices[0].message["content"].strip()
+        model = genai.GenerativeModel("gemini-1.5-flash")
+
+        # Combine system and user prompts
+        full_prompt = f"{system_prompt}\n{user_prompt}"
+
+        # Generate response using Gemini
+        response = model.generate_content(full_prompt)
+
+        # Extract and return the response text
+        if response and response.candidates:
+            return response.candidates[0].content.parts[0].text.strip()
+        else:
+            return "No valid response generated."
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"OpenAI API error: {e}")
+        print(f"Error while generating content with Gemini: {str(e)}")
+        return None
+
     
 # Step 1: Load the model
 model_path = r'runs/train/exp16/weights/best.pt'
@@ -195,8 +202,6 @@ def format_list_of_items(pages_data):
                 if len(elements) == 4:
                     formatted_items.append(elements)
                 else:
-                    # Handle cases where elements do not have exactly four elements
-                    # For now, we'll discard these items, but you can pad or handle them differently
                     continue
             
             labels["listOfItem"] = formatted_items
@@ -214,7 +219,7 @@ def process_pdf(pdf_path, model):
     json_output = json.dumps(pages_data, indent=4)
 
     return json_output
-
+    
 @app.post("/process-pdf/")
 async def process_pdf_endpoint(file: UploadFile = File(...)):
     # Save the uploaded file to a temporary location
@@ -312,114 +317,86 @@ async def process_document(file: UploadFile = File(...)):
                     result[file_path] = parsed_json
                 except json.JSONDecodeError as e:
                     print(f"Error decoding JSON for {file_path}: {e}")
-            # print(json.dumps(result, indent=4))
-            # Combine the extracted data and process it further
-            
+
+            final_combined_data = combine_page_data(result)
+            print("final_combined_data", final_combined_data)
             final_system_prompt = """
                 You are an execellent json converter. 
-                Your task is to convert the extracted data into a final json format.
-            """
+                "Please convert the following JSON data from its current format to a new format. The original JSON contains shipping and invoice details, along with a list of items. Each item may have associated Bill of Entry numbers and dates embedded within the 'itemDetails' field. Your task is to extract these Bill of Entry details and restructure the JSON as follows:
 
+                **Original JSON Format:**
+
+                ```json
+                {
+                    "shippingBillNumber": "...",
+                    "invoiceNumber": "...",
+                    "shippingBillDate": "...",
+                    "invoiceDate": "...",
+                    "portCode": "...",
+                    "location": "...",
+                    "items": [
+                        {
+                            "itemNumber": "...",
+                            "quantity": "...",
+                            "itemDetails": "..."
+                        },
+                        // ... more items
+                    ]
+                }```
+
+                Desired Output JSON Format:
+                [
+                    {
+                        "shippingBillNumber": "...",
+                        "invoiceNumber": "...",
+                        "shippingBillDate": "...",
+                        "invoiceDate": "...",
+                        "portCode": "...",
+                        "location": "...",
+                        "items": [
+                        {
+                            "itemNumber": "...",
+                            "quantity": "...",
+                            "itemDetails": "...",
+                            "billOfEntry": [
+                            {
+                                "billOfEntryNumber": "...",
+                                "billOfEntryDate": "..."
+                            },
+                            // ... more bill of entry details for this item
+                            ]
+                        },
+                        // ... more items
+                        ]
+                    }
+                    ]
+                """
+            
             final_user_prompt = f"""
-                Combine the extracted data from all pages into a single JSON format.
-                Ensure all data is accurately extracted as per the specified rules, keeping original formatting intact where required.
-                Focus on extracting key fields from all pages of the document, ensuring completeness and accuracy.
+            Instructions:
 
-                ### **Tags and Extraction Rules:**
+            1. Maintain the original shipping, invoice, port, and location details.
+            2. For each item in the 'items' array:
+                - Keep the 'itemNumber', 'quantity', and 'itemDetails' fields.
+                - Create a new array called 'billOfEntry'.
+                - Extract any Bill of Entry numbers and dates from the 'itemDetails' field.
+                - For each extracted Bill of Entry, create an object within the 'billOfEntry' array with 'billOfEntryNumber' and 'billOfEntryDate' fields.
+                - If no bill of entry information is found in the itemDetails, the billOfEntry array should be empty.
+                - If a date is found without a corresponding bill of entry number, the billOfEntryNumber field should be set to null.
+            3. The output should be a JSON array containing a single object with the restructured data.
+            
+            Here is the JSON data you need to convert:
+            {json.dumps(final_combined_data, indent=4)}
 
-                1. **Shipping Bill Number** : key value as = shippingBillNumber
-                2. **Invoice Number** : key value as = invoiceNumber
-                3. **Shipping Bill Date** : key value as = shippingBillDate
-                4. **Invoice Date** : key value as = invoiceDate
-                5. **Port Code** : key value as = portCode
-                6. **Location** : key value as = location
-                7. **Item Number** : key value as = itemNumber
-                8. **Quantity** : key value as = quantity
-                9. **Bill of entry Number** : key value as = billOfEntryNumber 
-                10. **Bill Of Entry Date** : key value as = billOfEntryDate
-
-                Points to be noted:-
-                1. If the tags are not present in the image then set their value as 'null'.
-                2. for bill of entry number and bill of entry date, use item details to extract the data. If BE NO is present then set its value and if and date format is present like 06.11.19 then set bill of entry date value as the date.
-                    Example:
-                    "itemDetails": [
-                        "73102990 EMPTY GOODPACK METAL BOXES TYPE MBS BEING RETURNED TO SUPPLIERNO COMMERCIAL VALUE DECLARED FOR CUSTOMS PURPOSE ONLY 120.000PCS",
-                        "73102990 IMPORTED VIDE BE NO:3912537 DTD 03.07.2019(QTY:48FCS), 3912769 DID 03.07.2019(QTY: 48PCS),3912536 DTD 03.07.2019(QTY:24PCS 1.000PCS",
-                        "73102990 EXPORT VIDE FEMA NOTIFICATION 23/2000-RB /03.05.2000 & FEMA116/2004-RB/25.03.2004 1.000PCS"
-                    ]
-                    then the output should be:
-                    "billOfEntryNumber": [[], ["3912769", "3912769", "3912536"], []],
-                    "billOfEntryDate": [[], ["03.07.2019", "03.07.2019", "03.07.2019"], []],
-                3. It is possible that in one item of itemdetails there are more than one BE NO or BE Date then mention all of them.
-                4. It is also possible that in one item of itemdetails no BE NO or BE Date is present then set their value as 'null'.
-
-                ### **Final JSON Format:**  
-                {{
-                    "shippingBillNumber": "8763764",
-                    "invoiceNumber": "MRFCHN/0107/2019",
-                    "shippingBillDate": "06/12/2019",
-                    "invoiceDate": "29/11/2019",
-                    "portCode": "INTVT6",
-                    "location": "TAMIL NADU",
-                    "items": 
-                    [
-                        {{
-                        "itemNumber": "73269099",
-                        "quantity": "12499.200KGS",
-                        "billOfEntry": [
-                            {{
-                            "billOfEntryNumber": "5565161",
-                            "billOfEntryDate": "06.11.19"
-                            }},
-                            {{
-                            "billOfEntryNumber": "5565149",
-                            "billOfEntryDate": "06.11.19"
-                            }}
-                        ]
-                        }},
-                        {{
-                        "itemNumber": "39231090",
-                        "quantity": "343.000KGS",
-                        "billOfEntry": [
-                            {{
-                            "billOfEntryNumber": "5565101",
-                            "billOfEntryDate": "06.11.19"
-                            }},
-                            {{
-                            "billOfEntryNumber": "5565149",
-                            "billOfEntryDate": "06.11.19"
-                            }}
-                        ]
-                        }},
-                        {{
-                        "itemNumber": "39231090",
-                        "quantity": "714.000KGS",
-                        "billOfEntry": [
-                            {{
-                            "billOfEntryNumber": "5565101",
-                            "billOfEntryDate": "06.11.19"
-                            }},
-                            {{
-                            "billOfEntryNumber": "5565149",
-                            "billOfEntryDate": "06.11.19"
-                            }}
-                        ]
-                        }},...
-                    ]
-                }}
-                5. If the tags are not present in the image then set their value as 'null'.
-                6. Item number is only of 8 digit. Consider them only as item number. If any number bigger than 8 digit is there than dont include it.
-                7. Length of list itemNumber, quantity, billOfEntryNumber, billOfEntryDate should be equal.
-                
-                Here is the json you need to work on:
-                {json.dumps(result, indent=4)}
             """
 
-            # Call Gemini model with the combined result
-            response = call_openai_model(final_system_prompt, final_user_prompt)
+            # # Call Gemini model with the combined result
+            response = call_gemini_model(final_system_prompt, final_user_prompt)
             clean_json_str = response.replace("```json", "").replace("```", "").strip()
             response = json.loads(clean_json_str)
-            print("response")
+            for item in response[0]["items"]:
+                del item["itemDetails"]
+            print("response", response)
             return JSONResponse(content=response)
 
         else:
