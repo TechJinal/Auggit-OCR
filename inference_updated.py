@@ -345,31 +345,29 @@ async def process_document(file: UploadFile = File(...)):
                 }```
 
                 Desired Output JSON Format:
-                [
+                {
+                    "shippingBillNumber": "...",
+                    "invoiceNumber": "...",
+                    "shippingBillDate": "...",
+                    "invoiceDate": "...",
+                    "portCode": "...",
+                    "location": "...",
+                    "items": [
                     {
-                        "shippingBillNumber": "...",
-                        "invoiceNumber": "...",
-                        "shippingBillDate": "...",
-                        "invoiceDate": "...",
-                        "portCode": "...",
-                        "location": "...",
-                        "items": [
+                        "itemNumber": "...",
+                        "quantity": "...",
+                        "itemDetails": "...",
+                        "billOfEntry": [
                         {
-                            "itemNumber": "...",
-                            "quantity": "...",
-                            "itemDetails": "...",
-                            "billOfEntry": [
-                            {
-                                "billOfEntryNumber": "...",
-                                "billOfEntryDate": "..."
-                            },
-                            // ... more bill of entry details for this item
-                            ]
+                            "billOfEntryNumber": "...",
+                            "billOfEntryDate": "..."
                         },
-                        // ... more items
+                        // ... more bill of entry details for this item
                         ]
-                    }
+                    },
+                    // ... more items
                     ]
+                }
                 """
             
             final_user_prompt = f"""
@@ -394,7 +392,7 @@ async def process_document(file: UploadFile = File(...)):
             response = call_gemini_model(final_system_prompt, final_user_prompt)
             clean_json_str = response.replace("```json", "").replace("```", "").strip()
             response = json.loads(clean_json_str)
-            for item in response[0]["items"]:
+            for item in response["items"]:
                 del item["itemDetails"]
             print("response", response)
             return JSONResponse(content=response)
