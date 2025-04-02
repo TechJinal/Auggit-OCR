@@ -15,12 +15,8 @@ from fastapi.responses import JSONResponse
 from pdf2image import convert_from_path
 
 from test import filter_items, merge_data
-# import openai
 
 load_dotenv()
-
-# OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-# openai.api_key = OPENAI_API_KEY
 
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 
