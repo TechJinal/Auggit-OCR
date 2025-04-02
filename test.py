@@ -1,57 +1,48 @@
-import json
 import re
 
-
-# ✅ Merge JSON Data Logic
-def combine_page_data(data):
-    """Combine all key-value pairs from multiple pages into a single JSON."""
-    combined_data = {
-        "shippingBillNumber": None,
-        "invoiceNumber": None,
-        "shippingBillDate": None,
-        "invoiceDate": None,
-        "portCode": None,
-        "location": None,
+def merge_data(data):
+    merged_data = {
+        "shippingBillNumber": "",
+        "invoiceNumber": "",
+        "shippingBillDate": "",
+        "invoiceDate": "",
+        "portCode": "",
+        "location": "",
         "items": []
     }
-
-    for page_data in data.values():
-        # Assign header-level fields if not already set
+    
+    # Extract common metadata from the first non-empty page
+    for page in data.values():
         for key in ["shippingBillNumber", "invoiceNumber", "shippingBillDate", "invoiceDate", "portCode", "location"]:
-            if combined_data[key] is None and page_data.get(key):
-                combined_data[key] = page_data[key]
+            if not merged_data[key] and page.get(key):
+                merged_data[key] = page[key]
+    
+    # Collect item details
+    all_items = []
+    for page in data.values():
+        item_numbers = page.get("itemNumber", [])
+        quantities = page.get("quantity", [])
+        item_details = page.get("itemDetails", [])
+        
+        # Ensure all lists have the same length by padding with empty strings
+        max_length = max(len(item_numbers), len(quantities), len(item_details))
+        item_numbers += [""] * (max_length - len(item_numbers))
+        quantities += [""] * (max_length - len(quantities))
+        item_details += [""] * (max_length - len(item_details))
+        
+        all_items.extend(
+            {"itemNumber": item_numbers[i], "quantity": quantities[i], "itemDetails": item_details[i]}
+            for i in range(max_length)
+        )
+    
+    # Filter out items where itemNumber does not have exactly 8 characters
+    merged_data["items"] = all_items
 
-        # Get item-level fields (check if None before processing)
-        item_numbers = page_data.get("itemNumber", []) or []
-        quantities = page_data.get("quantity", []) or []
-        item_details = page_data.get("itemDetails", []) or []
+    return merged_data
 
-        # ✅ Filter valid 8-digit item numbers only
-        valid_item_numbers = [item for item in item_numbers if item and re.match(r"^\d{8}$", str(item))]
-
-        # ✅ Check length consistency before adding items
-        if valid_item_numbers and quantities and item_details:
-            for i in range(len(valid_item_numbers)):
-                if i < len(quantities) and i < len(item_details):
-                    item = {
-                        "itemNumber": valid_item_numbers[i],
-                        "quantity": quantities[i],
-                        "itemDetails": item_details[i]
-                    }
-                    # Add item to the final list
-                    combined_data["items"].append(item)
-
-    # ✅ Remove empty or null values
-    for key, value in combined_data.items():
-        if isinstance(value, list) and not value:
-            combined_data[key] = None
-
-    return combined_data
-
-
-# ✅ Combine data from all pages
-# final_combined_data = combine_page_data(data)
-# print("Final Combined Data:", final_combined_data)
-
-# ✅ Print final merged JSON
-# print(json.dumps(final_combined_data, indent=4))
+def filter_items(data):
+    data["items"] = [
+        item for item in data["items"]
+        if item["itemNumber"] and re.fullmatch(r"\d{8}", item["itemNumber"])
+    ]
+    return data

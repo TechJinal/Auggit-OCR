@@ -14,7 +14,7 @@ import json
 from fastapi.responses import JSONResponse
 from pdf2image import convert_from_path
 
-from test import combine_page_data
+from test import filter_items, merge_data
 # import openai
 
 load_dotenv()
@@ -82,13 +82,10 @@ def gemini_output(image_path, system_prompt, user_prompt):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating response from Gemini: {str(e)}")
 
-def call_gemini_model(system_prompt, user_prompt):
+def call_gemini_model(full_prompt):
     """Generate structured data using Gemini 1.5 Flash."""
     try:
         model = genai.GenerativeModel("gemini-1.5-flash")
-
-        # Combine system and user prompts
-        full_prompt = f"{system_prompt}\n{user_prompt}"
 
         # Generate response using Gemini
         response = model.generate_content(full_prompt)
@@ -264,37 +261,49 @@ async def process_document(file: UploadFile = File(...)):
                 1. **Shipping Bill Number** : key value as = shippingBillNumber  
                 - Identify and extract the unique **Shipping Bill Number** from the document.  
                 - The Shipping Bill Number is typically a numeric string found near the top of the document, labeled as **"SB No"**.
+                - If no value is found, dont return null instead return empty double quotes.
 
                 2. **Invoice Number**  : key value as = invoiceNumber
                 - Capture the **Invoice Number** present in the document.  
                 - This is typically found next to the label **"Invoice No"**.
+                - If no value is found, dont return null instead return empty double quotes.
 
                 3. **Shipping Bill Date**  : key value as = shippingBillDate
                 - Extract the date associated with the **Shipping Bill**.  
                 - This information may be found near the **Shipping Bill Number** or next to the **Invoice Date**.
+                - If no value is found, dont return null instead return empty double quotes.
 
                 4. **Invoice Date**  : 
                 - Record the **Invoice Date** mentioned in the document.  
                 - Look for a label like **"Invoice Date"** or similar.
+                - If no value is found, dont return null instead return empty double quotes.
 
                 5. **Port Code**  : key value as = portCode
                 - Identify and capture the **Port Code** from the document. 
                 - it is Port of Ldg-Code.
+                - If no value is found, dont return null instead return empty double quotes.
 
                 6. **Location**  : key value as = location
                 - Extract the **Location** mentioned in the document. 
                 - State of Origin is location.
+                - If no value is found, dont return null instead return empty double quotes.
 
                 7. **Item Number**  : key value as = itemNumber
                 - Fetch the RITC CD .
                 - only of 8 digit number. consider them only as item number.
+                - If no value is found, return empty list.
+                - If more than one value is found, return all values in list format.
 
                 8. **Quantity**  : key value as = quantity
                 - Extract the quantity of each item listed in the document.
                 - Can be PCS, KGS or NOS.
+                - If no value is found, return empty list.
+                - If more than one value is found, return all values in list format.
 
                 9. **Item Details**  : key value as = itemDetails
-                - Extract the descriptions and quantities of all the items listed under "item details" section in the document. Include every details of every item in single quotes.
+                - Extract the descriptions and quantities of all the items listed under "item details" section in the document in list format. Include every details of every item in single quotes.
+                - If no value is found, return empty list.
+                - If more than one value is found, return all values in list format.
 
                 Remember only consider items those are present under item details section of the document.
                 """
@@ -307,6 +316,7 @@ async def process_document(file: UploadFile = File(...)):
                 # Add to the final output
                 json_output[image_path] = structured_output
 
+            
             result = {}
             for file_path, json_str in json_output.items():
                 # Replace the code block markers (```json) with an empty string
@@ -317,85 +327,151 @@ async def process_document(file: UploadFile = File(...)):
                     result[file_path] = parsed_json
                 except json.JSONDecodeError as e:
                     print(f"Error decoding JSON for {file_path}: {e}")
+            print("\nresult", result)
+            final_combined_data = merge_data(result)
+            print("\nfinal_combined_data", final_combined_data)
 
-            final_combined_data = combine_page_data(result)
-            print("final_combined_data", final_combined_data)
-            final_system_prompt = """
-                You are an execellent json converter. 
-                "Please convert the following JSON data from its current format to a new format. The original JSON contains shipping and invoice details, along with a list of items. Each item may have associated Bill of Entry numbers and dates embedded within the 'itemDetails' field. Your task is to extract these Bill of Entry details and restructure the JSON as follows:
-
-                **Original JSON Format:**
-
-                ```json
-                {
-                    "shippingBillNumber": "...",
-                    "invoiceNumber": "...",
-                    "shippingBillDate": "...",
-                    "invoiceDate": "...",
-                    "portCode": "...",
-                    "location": "...",
-                    "items": [
-                        {
-                            "itemNumber": "...",
-                            "quantity": "...",
-                            "itemDetails": "..."
-                        },
-                        // ... more items
-                    ]
-                }```
-
-                Desired Output JSON Format:
-                {
-                    "shippingBillNumber": "...",
-                    "invoiceNumber": "...",
-                    "shippingBillDate": "...",
-                    "invoiceDate": "...",
-                    "portCode": "...",
-                    "location": "...",
-                    "items": [
-                    {
-                        "itemNumber": "...",
-                        "quantity": "...",
-                        "itemDetails": "...",
-                        "billOfEntry": [
-                        {
-                            "billOfEntryNumber": "...",
-                            "billOfEntryDate": "..."
-                        },
-                        // ... more bill of entry details for this item
-                        ]
-                    },
-                    // ... more items
-                    ]
-                }
-                """
+            prompt = f"""
             
-            final_user_prompt = f"""
-            Instructions:
+            **Task:**  
+            You are given a JSON object containing shipping and invoice details along with a list of items. Each item has an `itemNumber`, `quantity`, and `itemDetails`. Your task is to:  
 
-            1. Maintain the original shipping, invoice, port, and location details.
-            2. For each item in the 'items' array:
-                - Keep the 'itemNumber', 'quantity', and 'itemDetails' fields.
-                - Create a new array called 'billOfEntry'.
-                - Extract any Bill of Entry numbers and dates from the 'itemDetails' field.
-                - For each extracted Bill of Entry, create an object within the 'billOfEntry' array with 'billOfEntryNumber' and 'billOfEntryDate' fields.
-                - If no bill of entry information is found in the itemDetails, the billOfEntry array should be empty.
-                - If a date is found without a corresponding bill of entry number, the billOfEntryNumber field should be set to null.
-            3. The output should be a JSON array containing a single object with the restructured data.
-            
-            Here is the JSON data you need to convert:
-            {json.dumps(final_combined_data, indent=4)}
+            1. **Extract bill of entry details** (if available) from `itemDetails`.  
+            - The bill of entry number is usually indicated by **"BE NO."**, **"B/E NO."**, **"BOE NO."**, or similar terms.  
+            - The bill of entry date is typically in **DD/MM/YYYY** or **DD.MM.YYYY** format.  
+            2. **Create a `billOfEntry` list** for each item where such details are found.  
+            - Each entry in the list should have:  
+                - `"billOfEntryNumber": "<extracted number>"`  
+                - `"billOfEntryDate": "<extracted date>"`  
+            3. **Merge items that have similar `itemDetails`:**  
+                - If two or more items have nearly identical `itemDetails`, they should be considered as **one item**.  
+                - If one entry has an `itemNumber` while the other does not, keep the valid `itemNumber`.  
+                - Ensure the `billOfEntry` field consolidates all relevant details from merged items.  
+            4. If no bill of entry details are found in an item’s `itemDetails`, the `billOfEntry` field should be an empty list (`[]`).  
+            5. Return the modified JSON with the `billOfEntry` field added to each item.  
 
+            ---
+
+            ### **Input JSON Example 1:**
+            ```json
+            {{
+            "shippingBillNumber": "7143265",
+            "invoiceNumber": "MRF/THIL/0036/19",
+            "shippingBillDate": "24/09/2019",
+            "invoiceDate": "26/08/2019",
+            "portCode": "INNSA1",
+            "location": "TAMIL NADU",
+            "items": [
+                {{
+                "itemNumber": "73102990",
+                "quantity": "2640.000",
+                "itemDetails": "'(IMPORTED BE NO.4309572 DT: 01.08.2019 1 4 PLT, 3934667 DT:04.07.2019')"
+                }}
+            ]
+            }}
+            ```
+
+            ---
+
+            ### **Expected Output JSON Format:**
+            ```json
+            {{
+            "shippingBillNumber": "7143265",
+            "invoiceNumber": "MRF/THIL/0036/19",
+            "shippingBillDate": "24/09/2019",
+            "invoiceDate": "26/08/2019",
+            "portCode": "INNSA1",
+            "location": "TAMIL NADU",
+            "items": [
+                {{
+                "itemNumber": "73102990",
+                "quantity": "2640.000",
+                "itemDetails": "'(IMPORTED BE NO.4309572 DT: 01.08.2019 1 4 PLT, 3934667 DT:04.07.2019')",
+                "billOfEntry": [
+                    {{
+                    "billOfEntryNumber": "4309572",
+                    "billOfEntryDate": "01.08.2019"
+                    }},
+                    {{
+                    "billOfEntryNumber": "3934667",
+                    "billOfEntryDate": "04.07.2019"
+                    }}
+                ]
+                }}
+            ]
+            }}
+            ```
+
+        ### **Input JSON Example2:**
+        ```json
+        {{
+            "shippingBillNumber": "5000351",
+            "invoiceNumber": "MRFCHN/0039/2019",
+            "shippingBillDate": "06/03/2019",
+            "invoiceDate": "28/02/2019",
+            "portCode": "",
+            "location": "Tamil Nadu",
+            "items": [
+                {{
+                "itemNumber": "",
+                "quantity": "192.000000",
+                "itemDetails": "'RETURNABLE METAL PALLETS(MB5)MADE OF GALVANISED STEEL'",
+                "billOfEntry": []
+                }},
+                {{
+                "itemNumber": "73102990",
+                "quantity": "",
+                "itemDetails": "'73102990-RETURNABLE METAL PALLETS (MB5) MADE OF GALVANISED STEEL'",
+                "billOfEntry": []
+                }}
+            ]
+            }}
+        ```
+        Expected Output JSON Format (with merged items):
+        ```json
+            {{
+            "shippingBillNumber": "5000351",
+            "invoiceNumber": "MRFCHN/0039/2019",
+            "shippingBillDate": "06/03/2019",
+            "invoiceDate": "28/02/2019",
+            "portCode": "",
+            "location": "Tamil Nadu",
+            "items": [
+                {{
+                "itemNumber": "73102990",
+                "quantity": "192.000000",
+                "billOfEntry": []
+                }}
+            ]
+            }}
+        ```
+            ---
+
+            ### **Instructions for the Model:**
+            - Identify bill of entry numbers and dates within `itemDetails`.  
+            - Format the extracted details in the `billOfEntry` field under each item.  
+            - Merge items with similar itemDetails into a single entry while:
+                - Retaining the valid itemNumber if available.
+                - Ensuring billOfEntry remains accurate for the merged item.
+            - If no bill of entry details are found, return an empty list for `billOfEntry`.  
+            - Preserve the structure and content of the original JSON, only adding the required field.  
+            - And i dont want python code, do the conversion and return the json only.
+
+            #Here is the input JSON object:
+            {final_combined_data} convert this.
             """
-
-            # # Call Gemini model with the combined result
-            response = call_gemini_model(final_system_prompt, final_user_prompt)
+            
+            response = call_gemini_model(prompt)
+            print("\nresponse", response)
             clean_json_str = response.replace("```json", "").replace("```", "").strip()
             response = json.loads(clean_json_str)
-            for item in response["items"]:
+            filtered_data = filter_items(response)
+            for item in filtered_data["items"]:
                 del item["itemDetails"]
-            print("response", response)
-            return JSONResponse(content=response)
+            
+            print("response", filtered_data)
+            print("\n")
+            return JSONResponse(content=filtered_data)
 
         else:
             raise HTTPException(status_code=400, detail="Invalid file format. Only PDF files are supported.")
