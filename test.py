@@ -40,9 +40,14 @@ def merge_data(data):
 
     return merged_data
 
-def filter_items(data):
-    data["items"] = [
-        item for item in data["items"]
-        if item["itemNumber"] and re.fullmatch(r"\d{8}", item["itemNumber"])
-    ]
-    return data
+def filter_items(response):
+    filtered_items = []
+    for item in response.get("items", []):
+        item_number = str(item.get("itemNumber", ""))
+        item_details = item.get("itemDetails")
+
+        if (re.fullmatch(r"\d{8}", item_number) or item_number == "") and item_details:
+            filtered_items.append(item)
+
+    response["items"] = filtered_items
+    return response

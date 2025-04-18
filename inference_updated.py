@@ -35,7 +35,7 @@ safety_settings = [
     {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
     {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
 ]
-app = FastAPI()
+app = FastAPI(title="Auggit OCR API", description="Auggit OCR API for PDF processing", version="1.0.0")
 
 def pdf_to_images_shipping(pdf_path):
     try:
@@ -325,64 +325,43 @@ async def process_document(file: UploadFile = File(...)):
                     print(f"Error decoding JSON for {file_path}: {e}")
             print("\nresult", result)
             final_combined_data = merge_data(result)
-            print("\nfinal_combined_data", final_combined_data)
+            filter_items(final_combined_data)
+            print("\nfinal_combined_data", final_combined_data["items"])
 
             prompt = f"""
+            You are a specialist in comprehending receipts. You are given a list of json objects containing itemNumber, quantity and itemDetails. Your task is to:
+            1. **Extract bill of entry details** (if available) from `itemDetails`.
+            - The bill of entry number is usually indicated by **"BE NO."**, **"B/E NO."**, **"BOE NO."**, or similar terms.
+            - The bill of entry date is typically in **DD/MM/YYYY** or **DD.MM.YYYY** format.
+
+            2. **Create a `billOfEntry` list** for each item where such details are found.
+            - Each entry in the list should have:
+                
+                - `"billOfEntryNumber": "<extracted number>"`
+                - `"billOfEntryDate": "<extracted date>"`
             
-            **Task:**  
-            You are given a JSON object containing shipping and invoice details along with a list of items. Each item has an `itemNumber`, `quantity`, and `itemDetails`. Your task is to:  
+            3. **Merge items that have similar `itemDetails`:**
+            - If two or more items have nearly identical `itemDetails`, they should be considered as **one item**.
+            - If one entry has an `itemNumber` while the other does not, keep the valid `itemNumber`.
+            - Ensure the `billOfEntry` field consolidates all relevant details from merged items.
 
-            1. **Extract bill of entry details** (if available) from `itemDetails`.  
-            - The bill of entry number is usually indicated by **"BE NO."**, **"B/E NO."**, **"BOE NO."**, or similar terms.  
-            - The bill of entry date is typically in **DD/MM/YYYY** or **DD.MM.YYYY** format.  
-            2. **Create a `billOfEntry` list** for each item where such details are found.  
-            - Each entry in the list should have:  
-                - `"billOfEntryNumber": "<extracted number>"`  
-                - `"billOfEntryDate": "<extracted date>"`  
-            3. **Merge items that have similar `itemDetails`:**  
-                - If two or more items have nearly identical `itemDetails`, they should be considered as **one item**.  
-                - If one entry has an `itemNumber` while the other does not, keep the valid `itemNumber`.  
-                - Ensure the `billOfEntry` field consolidates all relevant details from merged items.  
-            4. If no bill of entry details are found in an item’s `itemDetails`, the `billOfEntry` field should be an empty list (`[]`).  
-            5. Return the modified JSON with the `billOfEntry` field added to each item.  
-
-            ---
-
-            ### **Input JSON Example 1:**
+            For example1 :
             ```json
-            {{
-            "shippingBillNumber": "7143265",
-            "invoiceNumber": "MRF/THIL/0036/19",
-            "shippingBillDate": "24/09/2019",
-            "invoiceDate": "26/08/2019",
-            "portCode": "INNSA1",
-            "location": "TAMIL NADU",
-            "items": [
-                {{
-                "itemNumber": "73102990",
-                "quantity": "2640.000",
-                "itemDetails": "'(IMPORTED BE NO.4309572 DT: 01.08.2019 1 4 PLT, 3934667 DT:04.07.2019')"
-                }}
+            [
+                 {{
+                 "itemNumber": "73102990",
+                 "quantity": "2640.000",
+                 "itemDetails": "'(IMPORTED BE NO.4309572 DT: 01.08.2019 1 4 PLT, 3934667 DT:04.07.2019')"
+                 }}
             ]
-            }}
             ```
+            should be converted to:
 
-            ---
-
-            ### **Expected Output JSON Format:**
             ```json
-            {{
-            "shippingBillNumber": "7143265",
-            "invoiceNumber": "MRF/THIL/0036/19",
-            "shippingBillDate": "24/09/2019",
-            "invoiceDate": "26/08/2019",
-            "portCode": "INNSA1",
-            "location": "TAMIL NADU",
-            "items": [
+            [
                 {{
                 "itemNumber": "73102990",
                 "quantity": "2640.000",
-                "itemDetails": "'(IMPORTED BE NO.4309572 DT: 01.08.2019 1 4 PLT, 3934667 DT:04.07.2019')",
                 "billOfEntry": [
                     {{
                     "billOfEntryNumber": "4309572",
@@ -395,19 +374,12 @@ async def process_document(file: UploadFile = File(...)):
                 ]
                 }}
             ]
-            }}
             ```
 
-        ### **Input JSON Example2:**
-        ```json
-        {{
-            "shippingBillNumber": "5000351",
-            "invoiceNumber": "MRFCHN/0039/2019",
-            "shippingBillDate": "06/03/2019",
-            "invoiceDate": "28/02/2019",
-            "portCode": "",
-            "location": "Tamil Nadu",
-            "items": [
+            For example2 :
+
+            ```json
+            [
                 {{
                 "itemNumber": "",
                 "quantity": "192.000000",
@@ -421,53 +393,104 @@ async def process_document(file: UploadFile = File(...)):
                 "billOfEntry": []
                 }}
             ]
-            }}
-        ```
-        Expected Output JSON Format (with merged items):
-        ```json
-            {{
-            "shippingBillNumber": "5000351",
-            "invoiceNumber": "MRFCHN/0039/2019",
-            "shippingBillDate": "06/03/2019",
-            "invoiceDate": "28/02/2019",
-            "portCode": "",
-            "location": "Tamil Nadu",
-            "items": [
+            ```
+            should be converted to:
+                
+            ```json
+            [
                 {{
                 "itemNumber": "73102990",
                 "quantity": "192.000000",
                 "billOfEntry": []
                 }}
             ]
-            }}
-        ```
-            ---
+            ```
 
-            ### **Instructions for the Model:**
-            - Identify bill of entry numbers and dates within `itemDetails`.  
-            - Format the extracted details in the `billOfEntry` field under each item.  
-            - Merge items with similar itemDetails into a single entry while:
-                - Retaining the valid itemNumber if available.
-                - Ensuring billOfEntry remains accurate for the merged item.
-            - If no bill of entry details are found, return an empty list for `billOfEntry`.  
-            - Preserve the structure and content of the original JSON, only adding the required field.  
-            - And i dont want python code, do the conversion and return the json only.
+            For example3 :
 
-            #Here is the input JSON object:
-            {final_combined_data} convert this.
-            """
+            ```json
+            [
+                {{
+                'itemNumber': '73102990', 
+                'quantity': '24.000NOS', 
+                'itemDetails': "'EMPTY GOODPACK METAL BOXES (BEING RETURN TO SUPPLIER NO COMMERCIAL VALUE) VALUE DECLARED FOR CUSTOM PURPOSE ONLY) 24.000NOS 70.00000per1 NOS 1680.00000 118440.00'"
+                }}, 
+                {{
+                'itemNumber': '73102990', 
+                'quantity': '1.000NOS', 
+                'itemDetails': "'(IMPORTED BE NO.4029154 DT: 11.07.2019 2 1.000NOS 0.00001per1 NOS 0.00000 0.00'"
+                }}, 
+                {{
+                'itemNumber': '73102990', 
+                'quantity': '1.000NOS', 
+                'itemDetails': "'THE METAL BOXES WERE RECEIVED FREE OF CH ARGE VIDE THE BELOW MENTIONED INVOICE RE-EXPORT OF 1.000NOS 0.00001per1 NOS 0.00000 0.00'"
+                }}, 
+                {{
+                'itemNumber': '73102990', 
+                'quantity': '1.000NOS', 
+                'itemDetails': '\'RETURNABLE RETAL BOX TYPE MBS "GOODPACK"D UTY ON IMPORTATION ON THESE BOXES NOT PAID UNDER NTFN.NO.104/94 CUST.DT 16.03.94 1.000NOS 0.00001per1 NOS 0.00000 0.00\''
+                }}
+            ]
+            ```
+            should be converted to:
+                
+            ```json
+            [
+                {{
+                'itemNumber': '73102990', 
+                'quantity': '24.000NOS', 
+                'billOfEntry': []
+                }},
+                {{
+                'itemNumber': '73102990', 
+                'quantity': '1.000NOS', 
+                'billOfEntry': [
+                    {{
+                    "billOfEntryNumber": "4029154",
+                    "billOfEntryDate": "11.07.2019"
+                    }}
+                ]
+                }},
+                {{
+                'itemNumber': '73102990', 
+                'quantity': '1.000NOS', 
+                'billOfEntry': []
+                }},
+                {{
+                'itemNumber': '73102990', 
+                'quantity': '1.000NOS', 
+                'billOfEntry': []
+                }},
+            ]
+            ```
+            4. If no bill of entry details are found in an item’s `itemDetails`, the `billOfEntry` field should be an empty list (`[]`).
+            5. If the `itemNumber` is not present in the values of items, check if an itemNumber of 8 digits is present in the `itemDetails`. If yes, then consider that as the `itemNumber`.
+            6. Ensure the JSON structure is maintained, with the new `billOfEntry` field added to each item.
+            7. Preserve the structure and content of the original JSON, only adding the required field.
+            8. Return the modifies json only. 
+            9. No python code, no explanation, no comments.
+            10. invoice Date is in dd/mm/yyyy format. reset it if it is in any other format.
+            11. shippingBillDate is in dd/mm/yyyy format. reset it if it is in any other format.
+            
+            #Here is the input list of JSON object:
+            # {final_combined_data["items"]} convert this."""
+
             
             response = call_gemini_model(prompt)
-            print("\nresponse", response)
+            # print("\nresponse", response)
             clean_json_str = response.replace("```json", "").replace("```", "").strip()
             response = json.loads(clean_json_str)
-            filtered_data = filter_items(response)
-            for item in filtered_data["items"]:
-                del item["itemDetails"]
-            
-            print("response", filtered_data)
-            print("\n")
-            return JSONResponse(content=filtered_data)
+            print("\nresponse", response)
+
+            final_combined_data["items"] = response
+            print("\nfiltered_data", final_combined_data)
+
+            for item in final_combined_data["items"]:
+                if "itemDetails" in item:
+                    del item["itemDetails"]
+                    
+            print("\nresponse", final_combined_data)
+            return JSONResponse(content=final_combined_data)
 
         else:
             raise HTTPException(status_code=400, detail="Invalid file format. Only PDF files are supported.")
