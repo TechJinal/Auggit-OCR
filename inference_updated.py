@@ -74,6 +74,16 @@ def gemini_output(image_path, system_prompt, user_prompt):
         image_info = image_format(image_path)
         input_prompt = [system_prompt, image_info[0], user_prompt]
         response = model.generate_content(input_prompt)
+        if response.usage_metadata:
+            input_tokens = response.usage_metadata.prompt_token_count
+            output_tokens = response.usage_metadata.candidates_token_count
+            total_tokens = response.usage_metadata.total_token_count
+
+            print(f"Input tokens: {input_tokens}")
+            print(f"Output tokens: {output_tokens}")
+            print(f"Total tokens for this call: {total_tokens}")
+        else:
+            print("Usage metadata not available in the response.")
         return response.text
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating response from Gemini: {str(e)}")
@@ -85,6 +95,17 @@ def call_gemini_model(full_prompt):
 
         # Generate response using Gemini
         response = model.generate_content(full_prompt)
+
+        if response.usage_metadata:
+            input_tokens = response.usage_metadata.prompt_token_count
+            output_tokens = response.usage_metadata.candidates_token_count
+            total_tokens = response.usage_metadata.total_token_count
+
+            print(f"Input tokens: {input_tokens}")
+            print(f"Output tokens: {output_tokens}")
+            print(f"Total tokens for this call: {total_tokens}")
+        else:
+            print("Usage metadata not available in the response.")
 
         # Extract and return the response text
         if response and response.candidates:
@@ -242,6 +263,7 @@ async def process_document(file: UploadFile = File(...)):
 
             json_output = {}
             for image_path in image_paths:
+                print(f"Processing image: {image_path}")
                 system_prompt = """
                        You are a specialist in comprehending receipts.
                        Input images in the form of receipts will be provided to you,
@@ -351,7 +373,7 @@ async def process_document(file: UploadFile = File(...)):
                  {{
                  "itemNumber": "73102990",
                  "quantity": "2640.000",
-                 "itemDetails": "'(IMPORTED BE NO.4309572 DT: 01.08.2019 1 4 PLT, 3934667 DT:04.07.2019')"
+                 "itemDetails": "(IMPORTED BE NO.4309572 DT: 01.08.2019 1 4 PLT, 3934667 DT:04.07.2019')"
                  }}
             ]
             ```
@@ -362,6 +384,7 @@ async def process_document(file: UploadFile = File(...)):
                 {{
                 "itemNumber": "73102990",
                 "quantity": "2640.000",
+                "itemDescription": "RETURNABLE METAL PALLETS(MB5)MADE OF GALVANISED STEEL",
                 "billOfEntry": [
                     {{
                     "billOfEntryNumber": "4309572",
@@ -383,13 +406,13 @@ async def process_document(file: UploadFile = File(...)):
                 {{
                 "itemNumber": "",
                 "quantity": "192.000000",
-                "itemDetails": "'RETURNABLE METAL PALLETS(MB5)MADE OF GALVANISED STEEL'",
+                "itemDetails": "RETURNABLE METAL PALLETS(MB5)MADE OF GALVANISED STEEL",
                 "billOfEntry": []
                 }},
                 {{
                 "itemNumber": "73102990",
                 "quantity": "",
-                "itemDetails": "'73102990-RETURNABLE METAL PALLETS (MB5) MADE OF GALVANISED STEEL'",
+                "itemDetails": "73102990-RETURNABLE METAL PALLETS (MB5) MADE OF GALVANISED STEEL",
                 "billOfEntry": []
                 }}
             ]
@@ -401,6 +424,7 @@ async def process_document(file: UploadFile = File(...)):
                 {{
                 "itemNumber": "73102990",
                 "quantity": "192.000000",
+                "itemDescription": "RETURNABLE METAL PALLETS(MB5)MADE OF GALVANISED STEEL",
                 "billOfEntry": []
                 }}
             ]
@@ -413,22 +437,22 @@ async def process_document(file: UploadFile = File(...)):
                 {{
                 'itemNumber': '73102990', 
                 'quantity': '24.000NOS', 
-                'itemDetails': "'EMPTY GOODPACK METAL BOXES (BEING RETURN TO SUPPLIER NO COMMERCIAL VALUE) VALUE DECLARED FOR CUSTOM PURPOSE ONLY) 24.000NOS 70.00000per1 NOS 1680.00000 118440.00'"
+                'itemDetails': "EMPTY GOODPACK METAL BOXES (BEING RETURN TO SUPPLIER NO COMMERCIAL VALUE) VALUE DECLARED FOR CUSTOM PURPOSE ONLY) 24.000NOS 70.00000per1 NOS 1680.00000 118440.00"
                 }}, 
                 {{
                 'itemNumber': '73102990', 
                 'quantity': '1.000NOS', 
-                'itemDetails': "'(IMPORTED BE NO.4029154 DT: 11.07.2019 2 1.000NOS 0.00001per1 NOS 0.00000 0.00'"
+                'itemDetails': "(IMPORTED BE NO.4029154 DT: 11.07.2019 2 1.000NOS 0.00001per1 NOS 0.00000 0.00"
                 }}, 
                 {{
                 'itemNumber': '73102990', 
                 'quantity': '1.000NOS', 
-                'itemDetails': "'THE METAL BOXES WERE RECEIVED FREE OF CH ARGE VIDE THE BELOW MENTIONED INVOICE RE-EXPORT OF 1.000NOS 0.00001per1 NOS 0.00000 0.00'"
+                'itemDetails': "THE METAL BOXES WERE RECEIVED FREE OF CH ARGE VIDE THE BELOW MENTIONED INVOICE RE-EXPORT OF 1.000NOS 0.00001per1 NOS 0.00000 0.00"
                 }}, 
                 {{
                 'itemNumber': '73102990', 
                 'quantity': '1.000NOS', 
-                'itemDetails': '\'RETURNABLE RETAL BOX TYPE MBS "GOODPACK"D UTY ON IMPORTATION ON THESE BOXES NOT PAID UNDER NTFN.NO.104/94 CUST.DT 16.03.94 1.000NOS 0.00001per1 NOS 0.00000 0.00\''
+                'itemDetails': "RETURNABLE RETAL BOX TYPE MBS "GOODPACK"D UTY ON IMPORTATION ON THESE BOXES NOT PAID UNDER NTFN.NO.104/94 CUST.DT 16.03.94 1.000NOS 0.00001per1 NOS 0.00000 0.00"
                 }}
             ]
             ```
@@ -439,11 +463,13 @@ async def process_document(file: UploadFile = File(...)):
                 {{
                 'itemNumber': '73102990', 
                 'quantity': '24.000NOS', 
+                'itemDescription': "EMPTY GOODPACK METAL BOXES (BEING RETURN TO SUPPLIER NO COMMERCIAL VALUE) VALUE DECLARED FOR CUSTOM PURPOSE ONLY) 24.000NOS 70.00000per1 NOS 1680.00000 118440.00",
                 'billOfEntry': []
                 }},
                 {{
                 'itemNumber': '73102990', 
-                'quantity': '1.000NOS', 
+                'quantity': '1.000NOS',
+                'itemDescription': "(IMPORTED BE NO.4029154 DT: 11.07.2019 2 1.000NOS 0.00001per1 NOS 0.00000 0.00", 
                 'billOfEntry': [
                     {{
                     "billOfEntryNumber": "4029154",
@@ -454,11 +480,13 @@ async def process_document(file: UploadFile = File(...)):
                 {{
                 'itemNumber': '73102990', 
                 'quantity': '1.000NOS', 
+                'itemDescription': "THE METAL BOXES WERE RECEIVED FREE OF CH ARGE VIDE THE BELOW MENTIONED INVOICE RE-EXPORT OF 1.000NOS 0.00001per1 NOS 0.00000 0.00",
                 'billOfEntry': []
                 }},
                 {{
                 'itemNumber': '73102990', 
                 'quantity': '1.000NOS', 
+                'itemDescription': "RETURNABLE RETAL BOX TYPE MBS "GOODPACK"D UTY ON IMPORTATION ON THESE BOXES NOT PAID UNDER NTFN.NO.104/94 CUST.DT 16.03.94 1.000NOS 0.00001per1 NOS 0.00000 0.00",
                 'billOfEntry': []
                 }},
             ]
@@ -471,7 +499,10 @@ async def process_document(file: UploadFile = File(...)):
             9. No python code, no explanation, no comments.
             10. invoice Date is in dd/mm/yyyy format. reset it if it is in any other format.
             11. shippingBillDate is in dd/mm/yyyy format. reset it if it is in any other format.
-            
+            12. itemDescription should be fetched from the `itemDetails` field by removing the itemNumber.
+            13. If itemDescription is not present in the input JSON object, then return empty list.
+            14. In items dont return fields with same itemdescription.
+
             #Here is the input list of JSON object:
             # {final_combined_data["items"]} convert this."""
 
