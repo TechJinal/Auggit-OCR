@@ -283,7 +283,8 @@ async def process_document(file: UploadFile = File(...)):
 
                 2. **Invoice Number**  : key value as = invoiceNumber
                 - Capture the **Invoice Number** present in the document.  
-                - This is typically found next to the label **"Invoice No"**.
+                - This is typically found next to the label **"Invoice No"** or **"Invoice Number"** or **"Inv. No."**.
+                - Do not take any other invoice value like Invoice dt or only Invoice or Inv. val. These will not give you the exact invoice number. 
                 - If no value is found, dont return null instead return empty double quotes.
 
                 3. **Shipping Bill Date**  : key value as = shippingBillDate
@@ -348,7 +349,7 @@ async def process_document(file: UploadFile = File(...)):
             print("\nresult", result)
             final_combined_data = merge_data(result)
             filter_items(final_combined_data)
-            print("\nfinal_combined_data", final_combined_data["items"])
+            print("\nfinal_combined_data", final_combined_data)
 
             prompt = f"""
             You are a specialist in comprehending receipts. You are given a list of json objects containing itemNumber, quantity and itemDetails. Your task is to:
