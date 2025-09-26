@@ -67,7 +67,7 @@ def image_format(image_path):
 def gemini_output(image_path, system_prompt, user_prompt):
     try:
         model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash",
+            model_name="gemini-2.0-flash",
             generation_config=MODEL_CONFIG,
             safety_settings=safety_settings,
         )
@@ -270,7 +270,7 @@ async def process_document(file: UploadFile = File(...)):
                        and your task is to respond to questions based on the content of the input image.
                        """
 
-                user_prompt = f"""
+                user_prompt = """
 
                 Extract and convert the image-based document data into a structured JSON format by carefully identifying and capturing each field based on the tags and descriptions provided below. Ensure all data is accurately extracted as per the specified rules, keeping original formatting intact where required. Focus on extracting key fields from all pages of the document, ensuring completeness and accuracy.
 
