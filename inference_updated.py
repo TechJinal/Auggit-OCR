@@ -67,7 +67,7 @@ def image_format(image_path):
 def gemini_output(image_path, system_prompt, user_prompt):
     try:
         model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash",
+            model_name='gemini-2.0-flash',
             generation_config=MODEL_CONFIG,
             safety_settings=safety_settings,
         )
@@ -89,9 +89,9 @@ def gemini_output(image_path, system_prompt, user_prompt):
         raise HTTPException(status_code=500, detail=f"Error generating response from Gemini: {str(e)}")
 
 def call_gemini_model(full_prompt):
-    """Generate structured data using Gemini 1.5 Flash."""
+    """Generate structured data using Gemini 2.0 Flash."""
     try:
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.0-flash")
 
         # Generate response using Gemini
         response = model.generate_content(full_prompt)
@@ -270,7 +270,7 @@ async def process_document(file: UploadFile = File(...)):
                        and your task is to respond to questions based on the content of the input image.
                        """
 
-                user_prompt = f"""
+                user_prompt = """
 
                 Extract and convert the image-based document data into a structured JSON format by carefully identifying and capturing each field based on the tags and descriptions provided below. Ensure all data is accurately extracted as per the specified rules, keeping original formatting intact where required. Focus on extracting key fields from all pages of the document, ensuring completeness and accuracy.
 
@@ -283,7 +283,8 @@ async def process_document(file: UploadFile = File(...)):
 
                 2. **Invoice Number**  : key value as = invoiceNumber
                 - Capture the **Invoice Number** present in the document.  
-                - This is typically found next to the label **"Invoice No"**.
+                - This is typically found next to the label **"Invoice No"** or **"Invoice Number"** or **"Inv. No."**.
+                - Do not take any other invoice value like Invoice dt or only Invoice or Inv. val. These will not give you the exact invoice number. 
                 - If no value is found, dont return null instead return empty double quotes.
 
                 3. **Shipping Bill Date**  : key value as = shippingBillDate
@@ -348,7 +349,7 @@ async def process_document(file: UploadFile = File(...)):
             print("\nresult", result)
             final_combined_data = merge_data(result)
             filter_items(final_combined_data)
-            print("\nfinal_combined_data", final_combined_data["items"])
+            print("\nfinal_combined_data", final_combined_data)
 
             prompt = f"""
             You are a specialist in comprehending receipts. You are given a list of json objects containing itemNumber, quantity and itemDetails. Your task is to:
@@ -531,4 +532,5 @@ async def process_document(file: UploadFile = File(...)):
         # Clean up temporary files
         for image_path in image_paths:
             os.remove(image_path)
+
         os.remove(file_location)
