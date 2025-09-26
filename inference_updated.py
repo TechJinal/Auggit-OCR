@@ -89,9 +89,9 @@ def gemini_output(image_path, system_prompt, user_prompt):
         raise HTTPException(status_code=500, detail=f"Error generating response from Gemini: {str(e)}")
 
 def call_gemini_model(full_prompt):
-    """Generate structured data using Gemini 1.5 Flash."""
+    """Generate structured data using Gemini 2.0 Flash."""
     try:
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.0-flash")
 
         # Generate response using Gemini
         response = model.generate_content(full_prompt)
@@ -532,4 +532,5 @@ async def process_document(file: UploadFile = File(...)):
         # Clean up temporary files
         for image_path in image_paths:
             os.remove(image_path)
+
         os.remove(file_location)
