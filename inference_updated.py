@@ -67,7 +67,7 @@ def image_format(image_path):
 def gemini_output(image_path, system_prompt, user_prompt):
     try:
         model = genai.GenerativeModel(
-            model_name="gemini-2.0-flash",
+            model_name='gemini-2.0-flash',
             generation_config=MODEL_CONFIG,
             safety_settings=safety_settings,
         )
