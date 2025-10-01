@@ -15,6 +15,8 @@ Auggit-OCR is a generative AI-powered document processing system designed to ext
 3. Install dependencies:
    ```bash
    pip install -r requirements.txt
+   pip install -r requirements1.txt
+   pip install -r requirements2.txt
    ```
 4. Set up your `.env` file with the required Google API key
 5. Run the FastAPI server:
